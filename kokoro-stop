@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#
+# kokoro-stop — Stop and discard Kokoro TTS playback
+#
+# The MCP server checks for /tmp/kokoro-tts-stop during playback.
+# If the file exists, playback stops immediately and audio is discarded.
+# Any existing pause state is also cleared.
+#
+# Bind this script to a Stream Deck button or Keyboard Maestro hotkey
+# for instant stop control without going through Claude.
+#
+# Usage: kokoro-stop
+
+set -euo pipefail
+
+PAUSE_SENTINEL="/tmp/kokoro-tts-pause"
+STOP_SENTINEL="/tmp/kokoro-tts-stop"
+
+# Create stop sentinel first, then remove pause so the thread sees stop
+# as soon as it wakes from the pause loop.
+touch "$STOP_SENTINEL"
+rm -f "$PAUSE_SENTINEL"
+echo "stopped"

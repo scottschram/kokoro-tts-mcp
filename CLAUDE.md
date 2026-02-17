@@ -43,6 +43,8 @@ claude mcp add kokoro-tts -- \
 - `speak()` is non-blocking — generates audio then plays in background thread
 - Pause/resume via sentinel file `/tmp/kokoro-tts-pause` (works with
   `kokoro-pause` toggle script, Stream Deck, Keyboard Maestro, etc.)
+- Stop via sentinel file `/tmp/kokoro-tts-stop` (works with `kokoro-stop`
+  script, Stream Deck, Keyboard Maestro, etc.) — clears pause state too
 - Short text (<25 chars) padded with ` ... ...` to avoid mlx-audio hang bug
 
 ## Tools
