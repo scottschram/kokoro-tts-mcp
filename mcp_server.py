@@ -150,23 +150,19 @@ def _play_audio(audio: np.ndarray):
 
 def _stop_playback():
     """Stop current playback immediately."""
-    global _playback_thread, _playback_stream
+    global _playback_thread
+    # Signal the background thread to stop — it owns the stream lifecycle
     _playback_stop.set()
-    with _playback_lock:
-        if _playback_stream is not None:
-            try:
-                _playback_stream.abort()
-                _playback_stream.close()
-            except Exception:
-                pass
-            _playback_stream = None
-    # Wait for thread to finish
+    # Remove pause sentinel so the thread isn't stuck in pause loop
+    try:
+        os.remove(SENTINEL)
+    except FileNotFoundError:
+        pass
+    # Wait for the background thread to clean up the stream and exit
     if _playback_thread is not None and _playback_thread.is_alive():
-        _playback_thread.join(timeout=2.0)
+        _playback_thread.join(timeout=3.0)
     _playback_thread = None
     _set_state("idle")
-    if os.path.exists(SENTINEL):
-        os.remove(SENTINEL)
 
 
 # ── MCP Server ───────────────────────────────────────────────────────────
