@@ -8,8 +8,8 @@ We have a working `kokoro` CLI at `~/bin/kokoro` (symlinked from
 
 This project is an MCP server that lets Claude speak responses aloud — in
 Claude Code, Claude Chat, and Claude Cowork. Unlike the CLI wrapper, the
-MCP server loads the model once at startup and keeps it resident in memory,
-eliminating the ~1.7s cold start (imports + model load) on every request.
+MCP server lazy-loads the model on first use and keeps it resident in
+memory, eliminating the ~1.7s cold start on every subsequent request.
 
 ## Architecture: in-process model, not CLI subprocess
 
@@ -19,9 +19,10 @@ every `speak()` call means a full Python startup + model load each time
 adds up fast.
 
 Instead, this MCP server installs the full TTS dependency stack in its own
-venv and loads the Kokoro-82M model at startup. The model stays resident
-(~600-800 MB) for the lifetime of the server process. Each speech request
-then only costs ~1.5s for audio generation.
+venv and lazy-loads the Kokoro-82M model on first use. The server starts
+lightweight (~30-40 MB). Once loaded, the model stays resident (~600-800 MB)
+for the lifetime of the server process. Each subsequent speech request
+costs only ~1.5s for audio generation.
 
 This means a separate venv from kokoro-tts — the MCP server needs both
 `mcp` and the full `mlx-audio` stack. Keeping it separate avoids polluting
@@ -72,13 +73,17 @@ brew install espeak
 
 ## Key Design Decisions
 
-1. **Model loaded at startup, kept resident**: The Kokoro-82M model and
-   spaCy NLP model load once when the MCP server starts (~1.7s, ~600 MB).
-   They stay in memory for the lifetime of the process. Each `speak()`
-   call only pays the ~1.5s generation cost.
+1. **Lazy model loading**: The model is NOT loaded at server startup.
+   The server starts lightweight (~30-40 MB). On the first `speak()` or
+   `speak_and_save()` call, the Kokoro-82M model and spaCy NLP model
+   load on demand (~1.7s, ~600 MB). They then stay resident in memory
+   for the lifetime of the process. First call: ~3.2s (load + generate).
+   Every subsequent call: ~1.5s (generate only).
 
-2. **Memory budget**: ~600 MB after model load, ~800 MB peak during
-   generation. Negligible on a 32-64 GB machine (<3% of RAM).
+2. **Memory budget**: ~30-40 MB idle (no TTS used yet), ~600 MB after
+   first use (model loaded), ~800 MB peak during generation. Negligible
+   on a 32-64 GB machine. If TTS is never used in a session, the memory
+   cost is near zero.
 
 3. **Non-blocking `speak`**: Audio generation runs in a background thread.
    The MCP tool returns immediately ("Speaking N words with voice X")
@@ -116,10 +121,12 @@ pip install "mcp>=1.2.0" mlx-audio 'misaki[en]<0.9' num2words spacy espeakng_loa
 
 FastMCP server with in-process TTS. Key implementation details:
 
-- **Server startup**: Load Kokoro-82M model and create pipeline.
-  Store as module-level globals.
+- **Lazy init**: Module-level `_model = None`. A `_get_model()` function
+  checks if `_model` is None, loads Kokoro-82M + spaCy pipeline if so,
+  caches in the global, and returns it. Thread-safe with a `threading.Lock`.
 
-- **speak**: Generate audio in-process using loaded model. Play via
+- **speak**: Calls `_get_model()` (loads on first use). Generate audio
+  in-process using loaded model. Play via
   mlx-audio's AudioPlayer in a background thread. Return immediately.
   Store thread/player handle in module-level `_current_playback`.
 
