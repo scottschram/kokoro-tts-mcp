@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#
+# kokoro-pause — Toggle pause/resume for Kokoro TTS playback
+#
+# The MCP server monitors /tmp/kokoro-tts-pause during playback.
+# If the file exists, playback is paused. If removed, playback resumes.
+#
+# Bind this script to a Stream Deck button or Keyboard Maestro hotkey
+# for instant pause/resume control without going through Claude.
+#
+# Usage: kokoro-pause           # toggle
+#        kokoro-pause pause     # force pause
+#        kokoro-pause resume    # force resume
+#        kokoro-pause status    # show current state
+
+set -euo pipefail
+
+SENTINEL="/tmp/kokoro-tts-pause"
+
+case "${1:-toggle}" in
+    pause)
+        touch "$SENTINEL"
+        echo "paused" ;;
+    resume|play)
+        rm -f "$SENTINEL"
+        echo "resumed" ;;
+    status)
+        [ -f "$SENTINEL" ] && echo "paused" || echo "playing" ;;
+    toggle|*)
+        if [ -f "$SENTINEL" ]; then
+            rm -f "$SENTINEL"
+            echo "resumed"
+        else
+            touch "$SENTINEL"
+            echo "paused"
+        fi ;;
+esac

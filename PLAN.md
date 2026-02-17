@@ -58,6 +58,7 @@ brew install espeak
 ├── CLAUDE.md            # Project instructions for Claude
 ├── PLAN.md              # This file — implementation plan
 ├── mcp_server.py        # The MCP server
+├── kokoro-pause         # Toggle script for external pause/resume
 ├── .venv/               # Full TTS stack + mcp SDK
 └── .gitignore
 ```
@@ -66,8 +67,11 @@ brew install espeak
 
 | Tool | Blocking? | Purpose |
 |------|-----------|---------|
-| `speak(text, voice?, speed?)` | No | Play text aloud. Returns immediately. |
+| `speak(text, voice?, speed?)` | No | Play text aloud. Returns immediately with status. |
+| `pause()` | No | Pause current playback. |
+| `resume()` | No | Resume paused playback. |
 | `stop()` | No | Kill any currently-playing audio. |
+| `status()` | No | Return current state: idle, playing, or paused. |
 | `speak_and_save(text, output_path?, voice?, speed?, mp3?)` | Yes | Save audio file. Returns path. |
 | `list_voices()` | No | Return voice list (embedded, instant). |
 
@@ -92,17 +96,29 @@ brew install espeak
 4. **Kills previous playback before new `speak`**: Prevents audio overlap
    if Claude calls `speak` twice in succession.
 
-5. **Short text padding**: Text under 25 characters gets padded with
+5. **Sentinel file for external pause/resume**: The server monitors
+   `/tmp/kokoro-tts-pause` during playback (every ~0.5s). If the file
+   exists, playback pauses. If removed, playback resumes. This allows
+   external control via Stream Deck, Keyboard Maestro, or any script
+   without going through Claude. A toggle script (`kokoro-pause`) is
+   included in the project. The MCP `pause()`/`resume()` tools also
+   work by creating/removing this file, so both paths are consistent.
+
+6. **Status reporting**: `speak()` returns current playback state
+   (idle/playing/paused) so Claude knows not to stack audio on a paused
+   session. A dedicated `status()` tool also reports the current state.
+
+7. **Short text padding**: Text under 25 characters gets padded with
    ` ... ...` to avoid the mlx-audio AudioPlayer hang bug (same
    workaround as the CLI wrapper).
 
-6. **FastMCP decorator pattern**: Auto-generates JSON tool schemas from
+8. **FastMCP decorator pattern**: Auto-generates JSON tool schemas from
    Python type hints and docstrings.
 
-7. **Embedded voice list**: `list_voices` returns a hardcoded dict —
+9. **Embedded voice list**: `list_voices` returns a hardcoded dict —
    no computation needed, instant response.
 
-8. **Separate venv from kokoro-tts**: Both projects install the same
+10. **Separate venv from kokoro-tts**: Both projects install the same
    TTS dependencies independently. This avoids cross-project dependency
    conflicts and lets each project manage its own versions.
 
@@ -126,12 +142,21 @@ FastMCP server with in-process TTS. Key implementation details:
   caches in the global, and returns it. Thread-safe with a `threading.Lock`.
 
 - **speak**: Calls `_get_model()` (loads on first use). Generate audio
-  in-process using loaded model. Play via
-  mlx-audio's AudioPlayer in a background thread. Return immediately.
-  Store thread/player handle in module-level `_current_playback`.
+  in-process using loaded model. Play via `sounddevice` in a background
+  thread, checking `/tmp/kokoro-tts-pause` every ~0.5s during playback.
+  Return immediately with status (idle/playing/paused).
+  Store thread/stream handle in module-level `_current_playback`.
 
-- **stop**: Stop current audio playback. Return "Stopped audio playback"
-  or "No audio is currently playing".
+- **pause**: Creates `/tmp/kokoro-tts-pause`. Returns "Paused" or
+  "No audio is currently playing".
+
+- **resume**: Removes `/tmp/kokoro-tts-pause`. Returns "Resumed" or
+  "Audio is not paused".
+
+- **stop**: Stop current audio playback, remove sentinel file.
+  Return "Stopped audio playback" or "No audio is currently playing".
+
+- **status**: Returns current state: "idle", "playing", or "paused".
 
 - **speak_and_save**: Generate audio in-process, write WAV file.
   Optionally convert to MP3 via ffmpeg. Returns file path.
@@ -185,9 +210,11 @@ Naming: first letter = language (a=American, b=British), second = gender (f/m).
 ## Verification
 
 1. Venv installs cleanly with `mcp` + full TTS stack
-2. `/mcp` in Claude Code shows `kokoro-tts` connected with 4 tools
+2. `/mcp` in Claude Code shows `kokoro-tts` connected with 7 tools
 3. "Say hello using kokoro" — audio plays, Claude doesn't block
-4. "Stop the audio" — playback stops
-5. "Save a greeting as MP3" — returns file path
-6. "What voices are available?" — returns voice list
-7. Second `speak()` call returns in ~1.5s (no cold start penalty)
+4. "Pause" / "Resume" — playback pauses and resumes
+5. `kokoro-pause` script toggles pause from Stream Deck / Keyboard Maestro
+6. "Stop the audio" — playback stops
+7. "Save a greeting as MP3" — returns file path
+8. "What voices are available?" — returns voice list
+9. Second `speak()` call returns in ~1.5s (no cold start penalty)
