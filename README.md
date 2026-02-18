@@ -63,6 +63,16 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 Restart the Claude app after editing.
 
+### Testing Without Claude
+
+A smoke-test script is included to verify the TTS pipeline works without MCP or Claude:
+
+```bash
+./test-tts                          # default test phrase
+./test-tts "Custom text"            # speak custom text
+./test-tts "Cheerio" bm_fable       # specify voice
+```
+
 ### Standalone
 
 ```bash

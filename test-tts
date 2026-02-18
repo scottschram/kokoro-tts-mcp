@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# test-tts — Smoke test Kokoro TTS without MCP or Claude
+#
+# Imports the generation and playback functions directly from mcp_server.py
+# and speaks a short test phrase. Useful for verifying the TTS pipeline
+# works after a fresh setup.
+#
+# Usage: ./test-tts                    # default test phrase
+#        ./test-tts "Custom text"      # speak custom text
+#        ./test-tts "Hello" bm_fable   # specify voice
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python3.12"
+
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "Error: venv not found at $SCRIPT_DIR/.venv" >&2
+    echo "Run: python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt" >&2
+    exit 1
+fi
+
+TEXT="${1:-Hello from Kokoro. If you can hear this, the TTS pipeline is working.}"
+VOICE="${2:-af_heart}"
+
+echo "Text:  $TEXT"
+echo "Voice: $VOICE"
+echo "Generating audio..."
+
+"$VENV_PYTHON" -c "
+from mcp_server import _generate_audio, _play_audio
+audio = _generate_audio('''$TEXT''', '$VOICE', 1.0)
+if len(audio) == 0:
+    print('Error: no audio generated.')
+    exit(1)
+print(f'Playing {len(audio) / 24000:.1f}s of audio...')
+_play_audio(audio)
+print('Done.')
+"
