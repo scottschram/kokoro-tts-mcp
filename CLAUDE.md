@@ -1,74 +1,44 @@
-# Project: kokoro-tts-mcp
+# kokoro-tts-mcp
 
-MCP server for Kokoro-82M TTS on Apple Silicon. Lets Claude speak text aloud
-in Claude Code, Chat, and Cowork.
-
-## Setup
-
-Requires Python 3.12 (not 3.14 — spacy/pydantic incompatibility).
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install "mcp>=1.2.0" mlx-audio 'misaki[en]<0.9' num2words spacy espeakng_loader
-```
-
-Also requires: `brew install espeak`
-
-### Dependency pitfalls
-
-- Pin `misaki[en]<0.9` — 0.9+ breaks `EspeakWrapper.set_data_path`
-- Do NOT install `phonemizer` — it shadows `phonemizer-fork` and breaks
-  espeak fallback (OOD words get silently skipped)
-
-## Running
-
-```bash
-.venv/bin/python3.12 mcp_server.py
-```
-
-## Registration
-
-Claude Code:
-```bash
-claude mcp add kokoro-tts -- \
-    /Users/scott/Projects/voice/kokoro-tts-mcp/.venv/bin/python3.12 \
-    /Users/scott/Projects/voice/kokoro-tts-mcp/mcp_server.py
-```
+See [README.md](README.md) for setup, usage, and voice reference.
 
 ## Architecture
 
-- Lazy-loads model on first `speak()` / `speak_and_save()` call
+- Single file: `mcp_server.py` — FastMCP server with 7 tools
+- Lazy-loads Kokoro-82M on first `speak()` / `speak_and_save()` call
 - Model stays resident in memory (~600 MB) for fast subsequent calls
 - `speak()` is non-blocking — generates audio then plays in background thread
-- Pause/resume via sentinel file `/tmp/kokoro-tts-pause` (works with
-  `kokoro-pause` toggle script, Stream Deck, Keyboard Maestro, etc.)
-- Stop via sentinel file `/tmp/kokoro-tts-stop` (works with `kokoro-stop`
-  script, Stream Deck, Keyboard Maestro, etc.) — clears pause state too
+- Kills previous playback before starting new `speak()` — prevents audio overlap
+- Pause/resume via sentinel file `/tmp/kokoro-tts-pause`
+- Stop via sentinel file `/tmp/kokoro-tts-stop` — clears pause state too
 - Short text (<25 chars) padded with ` ... ...` to avoid mlx-audio hang bug
+- `stdout` redirected to `stderr` during model load and generation to avoid
+  corrupting the MCP JSON-RPC transport
 
-## Tools
+## Key Constraints
 
-| Tool | Purpose |
-|------|---------|
-| `speak(text, voice?, speed?)` | Play text aloud (non-blocking) |
-| `pause()` | Pause playback |
-| `resume()` | Resume playback |
-| `stop()` | Stop playback |
-| `status()` | Return idle/playing/paused |
-| `speak_and_save(text, output_path?, voice?, speed?, mp3?)` | Save audio file |
-| `list_voices()` | List available voices |
+- Requires Python 3.12 (not 3.13+ — spacy/pydantic incompatibility)
+- Pin `misaki[en]<0.9` — 0.9+ breaks `EspeakWrapper.set_data_path`
+- Do NOT install `phonemizer` — it shadows `phonemizer-fork` and breaks
+  espeak fallback (OOD words get silently skipped)
+- Requires `brew install espeak` on macOS
 
-## Voices
+## Design Decisions
 
-Default: `af_heart`. Prefix: a=American, b=British; f=female, m=male.
+- **In-process model, not CLI subprocess**: Shelling out on every `speak()` would
+  mean full Python startup + model load each time (~1.7s). Lazy in-process loading
+  amortizes this — first call ~3.2s, every subsequent call ~1.5s.
+- **Separate venv**: Keeps the full TTS dependency stack isolated.
+- **Sentinel files for external control**: Allows Stream Deck, Keyboard Maestro,
+  or any script to pause/stop without going through Claude. The MCP tools use
+  the same mechanism, keeping both paths consistent.
+- **Embedded voice list**: `list_voices()` returns a hardcoded dict — no
+  computation needed, instant response.
+- **FastMCP decorator pattern**: Auto-generates JSON tool schemas from Python
+  type hints and docstrings.
 
-American Female: af_heart, af_alloy, af_aoede, af_bella, af_jessica,
-af_kore, af_nicole, af_nova, af_river, af_sarah, af_sky
+## Memory Budget
 
-American Male: am_adam, am_echo, am_eric, am_fenrir, am_liam,
-am_michael, am_onyx, am_puck, am_santa
-
-British Female: bf_alice, bf_emma, bf_isabella, bf_lily
-
-British Male: bm_daniel, bm_fable, bm_george, bm_lewis
+- ~30-40 MB idle (model not yet loaded)
+- ~600 MB after first TTS use (model resident)
+- ~800 MB peak during generation

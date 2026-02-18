@@ -1,0 +1,19 @@
+# kokoro-tts-mcp direct dependencies
+# Install with: pip install -r requirements.txt
+
+mcp>=1.2.0
+mlx-audio>=0.3.0
+numpy
+sounddevice
+
+# Phonemizer — pin misaki <0.9 (0.9+ breaks EspeakWrapper.set_data_path)
+misaki[en]<0.9
+
+num2words
+spacy
+espeakng-loader
+
+# WARNING: Do NOT install the `phonemizer` package. mlx-audio pulls in
+# `phonemizer-fork` which is the correct dependency. Installing `phonemizer`
+# (without -fork) shadows it and silently breaks espeak fallback — out-of-
+# dictionary words get skipped without error.
