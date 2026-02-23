@@ -7,7 +7,9 @@ See [README.md](README.md) for setup, usage, and voice reference.
 - Single file: `mcp_server.py` — FastMCP server with 7 tools
 - Lazy-loads Kokoro-82M on first `speak()` / `speak_and_save()` call
 - Model stays resident in memory (~600 MB) for fast subsequent calls
-- `speak()` is non-blocking — generates audio then plays in background thread
+- `speak()` is non-blocking — streams audio chunk-by-chunk in background thread
+- Chunks generated lazily via pipeline (510 phoneme limit per chunk), played as produced
+- Single `sd.OutputStream` kept open across all chunks for seamless audio
 - Kills previous playback before starting new `speak()` — prevents audio overlap
 - Pause/resume via sentinel file `/tmp/kokoro-tts-pause`
 - Stop via sentinel file `/tmp/kokoro-tts-stop` — clears pause state too
@@ -36,6 +38,10 @@ See [README.md](README.md) for setup, usage, and voice reference.
   computation needed, instant response.
 - **FastMCP decorator pattern**: Auto-generates JSON tool schemas from Python
   type hints and docstrings.
+- **Streaming generate-and-play**: `speak()` returns immediately; a background
+  thread iterates `model.generate()` lazily, playing each chunk as it's produced.
+  This avoids blocking the MCP client for long text (previous approach collected
+  all audio before playback, causing timeouts on 500+ word text).
 
 ## Memory Budget
 

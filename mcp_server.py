@@ -172,6 +172,99 @@ def _play_audio(audio: np.ndarray):
                 pass
 
 
+def _generate_and_play(text: str, voice: str, speed: float):
+    """Generate audio chunk-by-chunk and play each immediately. Runs in background thread."""
+    global _playback_stream
+    _playback_stop.clear()
+    # Clean up stale stop sentinel from a previous session
+    try:
+        os.remove(STOP_SENTINEL)
+    except FileNotFoundError:
+        pass
+    _set_state("playing")
+
+    stream = None
+    try:
+        model = _get_model()
+        block_size = 2048
+        stream = sd.OutputStream(
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            blocksize=block_size,
+            dtype="float32",
+        )
+        with _playback_lock:
+            _playback_stream = stream
+        stream.start()
+
+        with contextlib.redirect_stdout(sys.stderr):
+            for result in model.generate(
+                text=text,
+                voice=voice,
+                speed=speed,
+                lang_code=_lang_code(voice),
+            ):
+                # Check stop before playing this chunk
+                if _playback_stop.is_set() or os.path.exists(STOP_SENTINEL):
+                    _playback_stop.set()
+                    break
+
+                audio = np.array(result.audio)
+                if len(audio) == 0:
+                    continue
+
+                idx = 0
+                while idx < len(audio):
+                    # Check stop
+                    if _playback_stop.is_set() or os.path.exists(STOP_SENTINEL):
+                        _playback_stop.set()
+                        break
+
+                    # Check pause sentinel
+                    if os.path.exists(SENTINEL):
+                        _set_state("paused")
+                        while os.path.exists(SENTINEL) and not _playback_stop.is_set():
+                            if os.path.exists(STOP_SENTINEL):
+                                _playback_stop.set()
+                                break
+                            time.sleep(0.1)
+                        if _playback_stop.is_set():
+                            break
+                        if os.path.exists(STOP_SENTINEL):
+                            _playback_stop.set()
+                            break
+                        _set_state("playing")
+
+                    end = min(idx + block_size, len(audio))
+                    chunk = audio[idx:end].reshape(-1, 1)
+                    stream.write(chunk)
+                    idx = end
+
+                # Break outer loop if stop was requested during playback
+                if _playback_stop.is_set():
+                    break
+
+        stream.stop()
+        stream.close()
+    except Exception:
+        pass
+    finally:
+        if stream is not None:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+        with _playback_lock:
+            _playback_stream = None
+        _set_state("idle")
+        for f in (SENTINEL, STOP_SENTINEL):
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
+
+
 def _stop_playback():
     """Stop current playback immediately."""
     global _playback_thread
@@ -216,13 +309,13 @@ def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -
 
     word_count = len(text.split())
 
-    # Generate audio (blocking — typically ~1.5s after first load)
-    audio = _generate_audio(text, voice, speed)
-    if len(audio) == 0:
-        return "No audio generated."
+    # Ensure model is loaded before returning (first call ~3.2s, subsequent ~0ms)
+    _get_model()
 
-    # Play in background thread
-    _playback_thread = threading.Thread(target=_play_audio, args=(audio,), daemon=True)
+    # Generate and play in background thread — streams chunks as they're produced
+    _playback_thread = threading.Thread(
+        target=_generate_and_play, args=(text, voice, speed), daemon=True
+    )
     _playback_thread.start()
 
     return f"Speaking {word_count} words with voice {voice} at {speed}x speed."
