@@ -1,8 +1,13 @@
 # kokoro-tts-mcp
 
-An MCP (Model Context Protocol) server that provides text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Enables Claude Code, Claude Chat, and Claude Cowork to speak text aloud on a Mac.
+Text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Works two ways:
 
-The server lazy-loads the model on first use and keeps it resident in memory (~600 MB), eliminating cold-start latency on subsequent requests. Audio generation takes roughly 1.5 seconds per request after the initial load.
+- **MCP server** — gives Claude Code, Claude Chat, and Claude Cowork the ability to speak text aloud
+- **Command-line tool** — `kokoro` command for use in scripts, the terminal, or piped workflows
+
+Both share the same generation engine and playback code, so pause/stop controls (via Stream Deck, hotkeys, etc.) work identically regardless of how audio was started.
+
+The MCP server lazy-loads the model on first use and keeps it resident in memory (~600 MB), so subsequent requests start instantly. The CLI loads the model fresh each invocation (~3s startup), which is negligible for longer text.
 
 ## Requirements
 
@@ -30,7 +35,29 @@ python -m spacy download en_core_web_sm
 
 ## Usage
 
-### Claude Code
+### Command Line
+
+```bash
+kokoro "Hello, world."                         # play immediately
+cat article.txt | kokoro                       # pipe input
+kokoro -v bm_fable "Good morning, London."     # British male voice
+kokoro -f article.txt -o article.wav           # save to WAV
+kokoro -f article.txt --mp3                    # save as MP3 to /tmp
+kokoro -o talk.wav -p "Hello"                  # save AND play
+kokoro -s 1.3 "A bit faster."                 # speed adjustment
+kokoro -v list                                 # show all voices
+kokoro -h                                      # full help
+```
+
+Playback streams chunk-by-chunk, so even very long text (tested with 1500+ words) starts playing within a few seconds. Pause and stop work at any point during playback.
+
+To make `kokoro` available globally, symlink it:
+
+```bash
+ln -sf /path/to/kokoro-tts-mcp/kokoro ~/bin/kokoro
+```
+
+### MCP Server (Claude Code)
 
 Register the MCP server:
 
@@ -46,7 +73,7 @@ Then in Claude Code, you can ask Claude to speak:
 > "Read that summary aloud using the British male voice bm_george"
 > "Save that explanation as an MP3"
 
-### Claude Desktop (Chat / Cowork)
+### MCP Server (Claude Desktop — Chat / Cowork)
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -63,20 +90,14 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 Restart the Claude app after editing.
 
-### Testing Without Claude
+### Smoke Test
 
-A smoke-test script is included to verify the TTS pipeline works without MCP or Claude:
+A quick test script to verify the TTS pipeline without MCP or the full CLI:
 
 ```bash
 ./test-tts                          # default test phrase
 ./test-tts "Custom text"            # speak custom text
 ./test-tts "Cheerio" bm_fable       # specify voice
-```
-
-### Standalone
-
-```bash
-.venv/bin/python3.12 mcp_server.py
 ```
 
 ## Tools
@@ -103,14 +124,14 @@ A smoke-test script is included to verify the TTS pipeline works without MCP or 
 
 **British Male:** bm_daniel, bm_fable, bm_george, bm_lewis
 
-## External Playback Control
+## Playback Control
 
-Two shell scripts are included for controlling playback from outside Claude (e.g., via Stream Deck, Keyboard Maestro, or a hotkey):
+Two shell scripts control playback from outside Claude (e.g., via Stream Deck, Keyboard Maestro, or a hotkey). They work with both the MCP server and the CLI — whichever is currently playing:
 
 - **`kokoro-pause`** — Toggle pause/resume. Also supports `kokoro-pause pause`, `kokoro-pause resume`, and `kokoro-pause status`.
 - **`kokoro-stop`** — Stop playback immediately and discard audio.
 
-These work by creating/removing sentinel files that the server monitors during playback.
+These work by creating/removing sentinel files (`/tmp/kokoro-tts-pause`, `/tmp/kokoro-tts-stop`) that the playback loop monitors.
 
 ## Known Issues
 
