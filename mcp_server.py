@@ -5,6 +5,7 @@ Lazy-loads Kokoro-82M on first use, keeps it resident for fast subsequent calls.
 """
 
 import contextlib
+import fcntl
 import os
 import subprocess
 import sys
@@ -24,6 +25,7 @@ DEFAULT_SPEED = 1.0
 SAMPLE_RATE = 24000
 SENTINEL = "/tmp/kokoro-tts-pause"
 STOP_SENTINEL = "/tmp/kokoro-tts-stop"
+PLAYBACK_LOCKFILE = "/tmp/kokoro-tts-playback.lock"
 SHORT_TEXT_THRESHOLD = 25
 SHORT_TEXT_PAD = " ... ..."
 
@@ -75,11 +77,48 @@ _playback_thread: threading.Thread | None = None
 _playback_stream: sd.OutputStream | None = None
 _playback_stop = threading.Event()  # signal thread to stop
 _playback_state = "idle"  # idle | playing | paused
+_playback_session = 0  # incremented to invalidate older playback workers
 
 
 def _set_state(state: str):
     global _playback_state
     _playback_state = state
+
+
+def _next_playback_session() -> int:
+    """Return a new playback session id and invalidate older workers."""
+    global _playback_session
+    with _playback_lock:
+        _playback_session += 1
+        return _playback_session
+
+
+def _is_current_session(session_id: int) -> bool:
+    with _playback_lock:
+        return session_id == _playback_session
+
+
+def _request_global_stop():
+    """Signal any external player process to stop and clear pause state."""
+    Path(STOP_SENTINEL).touch()
+    try:
+        os.remove(SENTINEL)
+    except FileNotFoundError:
+        pass
+
+
+@contextlib.contextmanager
+def _acquire_playback_ownership():
+    """Serialize playback across processes so only one stream is active at once."""
+    fd = os.open(PLAYBACK_LOCKFILE, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
 
 def _generate_audio(text: str, voice: str, speed: float) -> np.ndarray:
@@ -101,170 +140,207 @@ def _generate_audio(text: str, voice: str, speed: float) -> np.ndarray:
     return np.concatenate(chunks)
 
 
-def _play_audio(audio: np.ndarray):
+def _play_audio(audio: np.ndarray, session_id: int | None = None):
     """Play audio with pause/resume sentinel support. Runs in background thread."""
     global _playback_stream
-    _playback_stop.clear()
-    # Clean up stale sentinels from a previous session
-    for f in (SENTINEL, STOP_SENTINEL):
-        try:
-            os.remove(f)
-        except FileNotFoundError:
-            pass
-    _set_state("playing")
+    if session_id is None:
+        session_id = _next_playback_session()
 
-    try:
-        # Write all audio into a sounddevice OutputStream, checking for
-        # pause (sentinel file) and stop (event) during playback.
-        block_size = 2048
-        idx = 0
-        stream = sd.OutputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            blocksize=block_size,
-            dtype="float32",
-        )
-        with _playback_lock:
-            _playback_stream = stream
-
-        stream.start()
-
-        while idx < len(audio):
-            # Check stop — MCP event or sentinel file from kokoro-stop
-            if _playback_stop.is_set() or os.path.exists(STOP_SENTINEL):
-                _playback_stop.set()
-                break
-
-            # Check pause sentinel
-            if os.path.exists(SENTINEL):
-                _set_state("paused")
-                while os.path.exists(SENTINEL) and not _playback_stop.is_set():
-                    if os.path.exists(STOP_SENTINEL):
-                        _playback_stop.set()
-                        break
-                    time.sleep(0.1)
-                if _playback_stop.is_set():
-                    break
-                # Re-check stop before resuming — avoids playing a blip
-                # when kokoro-stop removes pause then thread wakes
-                if os.path.exists(STOP_SENTINEL):
-                    _playback_stop.set()
-                    break
-                _set_state("playing")
-
-            end = min(idx + block_size, len(audio))
-            chunk = audio[idx:end].reshape(-1, 1)
-            stream.write(chunk)
-            idx = end
-
-        stream.stop()
-        stream.close()
-    except Exception:
-        pass
-    finally:
-        with _playback_lock:
-            _playback_stream = None
-        _set_state("idle")
-        # Clean up sentinel files
+    # Stop any external player process first, then acquire global ownership.
+    _request_global_stop()
+    with _acquire_playback_ownership():
+        _playback_stop.clear()
+        # Clean up stale sentinels from a previous session
         for f in (SENTINEL, STOP_SENTINEL):
             try:
                 os.remove(f)
             except FileNotFoundError:
                 pass
+        _set_state("playing")
 
-
-def _generate_and_play(text: str, voice: str, speed: float):
-    """Generate audio chunk-by-chunk and play each immediately. Runs in background thread."""
-    global _playback_stream
-    _playback_stop.clear()
-    # Clean up stale sentinels from a previous session
-    for f in (SENTINEL, STOP_SENTINEL):
+        stream = None
         try:
-            os.remove(f)
-        except FileNotFoundError:
-            pass
-    _set_state("playing")
+            # Write all audio into a sounddevice OutputStream, checking for
+            # pause (sentinel file) and stop (event) during playback.
+            block_size = 2048
+            idx = 0
+            stream = sd.OutputStream(
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                blocksize=block_size,
+                dtype="float32",
+            )
+            with _playback_lock:
+                _playback_stream = stream
 
-    stream = None
-    try:
-        model = _get_model()
-        block_size = 2048
-        stream = sd.OutputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            blocksize=block_size,
-            dtype="float32",
-        )
-        with _playback_lock:
-            _playback_stream = stream
-        stream.start()
+            stream.start()
 
-        with contextlib.redirect_stdout(sys.stderr):
-            for result in model.generate(
-                text=text,
-                voice=voice,
-                speed=speed,
-                lang_code=_lang_code(voice),
-            ):
-                # Check stop before playing this chunk
-                if _playback_stop.is_set() or os.path.exists(STOP_SENTINEL):
+            while idx < len(audio):
+                # Check stop — MCP event or sentinel file from kokoro-stop
+                if (
+                    _playback_stop.is_set()
+                    or os.path.exists(STOP_SENTINEL)
+                    or not _is_current_session(session_id)
+                ):
                     _playback_stop.set()
                     break
 
-                audio = np.array(result.audio)
-                if len(audio) == 0:
-                    continue
-
-                idx = 0
-                while idx < len(audio):
-                    # Check stop
-                    if _playback_stop.is_set() or os.path.exists(STOP_SENTINEL):
-                        _playback_stop.set()
-                        break
-
-                    # Check pause sentinel
-                    if os.path.exists(SENTINEL):
-                        _set_state("paused")
-                        while os.path.exists(SENTINEL) and not _playback_stop.is_set():
-                            if os.path.exists(STOP_SENTINEL):
-                                _playback_stop.set()
-                                break
-                            time.sleep(0.1)
-                        if _playback_stop.is_set():
-                            break
+                # Check pause sentinel
+                if os.path.exists(SENTINEL):
+                    _set_state("paused")
+                    while (
+                        os.path.exists(SENTINEL)
+                        and not _playback_stop.is_set()
+                        and _is_current_session(session_id)
+                    ):
                         if os.path.exists(STOP_SENTINEL):
                             _playback_stop.set()
                             break
-                        _set_state("playing")
+                        time.sleep(0.1)
+                    if _playback_stop.is_set() or not _is_current_session(session_id):
+                        break
+                    # Re-check stop before resuming — avoids playing a blip
+                    # when kokoro-stop removes pause then thread wakes
+                    if os.path.exists(STOP_SENTINEL) or not _is_current_session(session_id):
+                        _playback_stop.set()
+                        break
+                    _set_state("playing")
 
-                    end = min(idx + block_size, len(audio))
-                    chunk = audio[idx:end].reshape(-1, 1)
-                    stream.write(chunk)
-                    idx = end
+                end = min(idx + block_size, len(audio))
+                chunk = audio[idx:end].reshape(-1, 1)
+                stream.write(chunk)
+                idx = end
 
-                # Break outer loop if stop was requested during playback
-                if _playback_stop.is_set():
-                    break
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+        finally:
+            with _playback_lock:
+                if _playback_stream is stream:
+                    _playback_stream = None
+            if _is_current_session(session_id):
+                _set_state("idle")
+                # Clean up sentinel files
+                for f in (SENTINEL, STOP_SENTINEL):
+                    try:
+                        os.remove(f)
+                    except FileNotFoundError:
+                        pass
 
-        stream.stop()
-        stream.close()
-    except Exception:
-        pass
-    finally:
-        if stream is not None:
-            try:
-                stream.stop()
-                stream.close()
-            except Exception:
-                pass
-        with _playback_lock:
-            _playback_stream = None
-        _set_state("idle")
+
+def _generate_and_play(text: str, voice: str, speed: float, session_id: int | None = None):
+    """Generate audio chunk-by-chunk and play each immediately. Runs in background thread."""
+    global _playback_stream
+    if session_id is None:
+        session_id = _next_playback_session()
+
+    # Stop any external player process first, then acquire global ownership.
+    _request_global_stop()
+    with _acquire_playback_ownership():
+        _playback_stop.clear()
+        # Clean up stale sentinels from a previous session
         for f in (SENTINEL, STOP_SENTINEL):
             try:
                 os.remove(f)
             except FileNotFoundError:
                 pass
+        _set_state("playing")
+
+        stream = None
+        try:
+            model = _get_model()
+            block_size = 2048
+            stream = sd.OutputStream(
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                blocksize=block_size,
+                dtype="float32",
+            )
+            with _playback_lock:
+                _playback_stream = stream
+            stream.start()
+
+            with contextlib.redirect_stdout(sys.stderr):
+                for result in model.generate(
+                    text=text,
+                    voice=voice,
+                    speed=speed,
+                    lang_code=_lang_code(voice),
+                ):
+                    # Check stop before playing this chunk
+                    if (
+                        _playback_stop.is_set()
+                        or os.path.exists(STOP_SENTINEL)
+                        or not _is_current_session(session_id)
+                    ):
+                        _playback_stop.set()
+                        break
+
+                    audio = np.array(result.audio)
+                    if len(audio) == 0:
+                        continue
+
+                    idx = 0
+                    while idx < len(audio):
+                        # Check stop
+                        if (
+                            _playback_stop.is_set()
+                            or os.path.exists(STOP_SENTINEL)
+                            or not _is_current_session(session_id)
+                        ):
+                            _playback_stop.set()
+                            break
+
+                        # Check pause sentinel
+                        if os.path.exists(SENTINEL):
+                            _set_state("paused")
+                            while (
+                                os.path.exists(SENTINEL)
+                                and not _playback_stop.is_set()
+                                and _is_current_session(session_id)
+                            ):
+                                if os.path.exists(STOP_SENTINEL):
+                                    _playback_stop.set()
+                                    break
+                                time.sleep(0.1)
+                            if _playback_stop.is_set() or not _is_current_session(session_id):
+                                break
+                            if os.path.exists(STOP_SENTINEL) or not _is_current_session(session_id):
+                                _playback_stop.set()
+                                break
+                            _set_state("playing")
+
+                        end = min(idx + block_size, len(audio))
+                        chunk = audio[idx:end].reshape(-1, 1)
+                        stream.write(chunk)
+                        idx = end
+
+                    # Break outer loop if stop was requested during playback
+                    if _playback_stop.is_set() or not _is_current_session(session_id):
+                        break
+
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
+            with _playback_lock:
+                if _playback_stream is stream:
+                    _playback_stream = None
+            if _is_current_session(session_id):
+                _set_state("idle")
+                for f in (SENTINEL, STOP_SENTINEL):
+                    try:
+                        os.remove(f)
+                    except FileNotFoundError:
+                        pass
 
 
 def _stop_playback():
@@ -272,6 +348,16 @@ def _stop_playback():
     global _playback_thread
     # Signal the background thread to stop — it owns the stream lifecycle
     _playback_stop.set()
+    # Invalidate any currently-running playback worker session immediately.
+    _next_playback_session()
+    # Try to interrupt a blocking stream write from this thread.
+    with _playback_lock:
+        stream = _playback_stream
+    if stream is not None:
+        try:
+            stream.abort()
+        except Exception:
+            pass
     # Remove sentinel files so the thread isn't stuck in pause loop
     for f in (SENTINEL, STOP_SENTINEL):
         try:
@@ -301,8 +387,10 @@ def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -
     """
     global _playback_thread
 
-    # Kill any current playback first
-    if _playback_state != "idle":
+    # Kill any current playback first.
+    # Check thread liveness too, since state may already be idle if a prior
+    # stop timed out while worker teardown was still in progress.
+    if _playback_state != "idle" or (_playback_thread is not None and _playback_thread.is_alive()):
         _stop_playback()
 
     # Short text padding to avoid AudioPlayer hang
@@ -315,8 +403,9 @@ def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -
     _get_model()
 
     # Generate and play in background thread — streams chunks as they're produced
+    session_id = _next_playback_session()
     _playback_thread = threading.Thread(
-        target=_generate_and_play, args=(text, voice, speed), daemon=True
+        target=_generate_and_play, args=(text, voice, speed, session_id), daemon=True
     )
     _playback_thread.start()
 
