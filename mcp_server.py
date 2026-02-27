@@ -350,14 +350,6 @@ def _stop_playback():
     _playback_stop.set()
     # Invalidate any currently-running playback worker session immediately.
     _next_playback_session()
-    # Try to interrupt a blocking stream write from this thread.
-    with _playback_lock:
-        stream = _playback_stream
-    if stream is not None:
-        try:
-            stream.abort()
-        except Exception:
-            pass
     # Remove sentinel files so the thread isn't stuck in pause loop
     for f in (SENTINEL, STOP_SENTINEL):
         try:
