@@ -2,7 +2,8 @@
 
 Text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Works two ways:
 
-- **MCP server** — gives Claude Code, Claude Chat, and Claude Cowork the ability to speak text aloud
+- **MCP server** — givegives local Claude and Codex clients (Claude Chat/Code/Cowork, Codex App, Codex CLI) the ability to speak text aloud and convert text to audio.
+- Not supported yet: ChatGPT Mac App
 - **Command-line tool** — `kokoro` command for use in scripts, the terminal, or piped workflows
 
 Both share the same generation engine and playback code, so pause/stop controls (via Stream Deck, hotkeys, etc.) work identically regardless of how audio was started.
@@ -89,6 +90,27 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 Restart the Claude app after editing.
+
+### MCP Server (Codex CLI)
+
+Register the MCP server:
+
+```bash
+codex mcp add kokoro-tts -- \
+    /path/to/kokoro-tts-mcp/.venv/bin/python3.12 \
+    /path/to/kokoro-tts-mcp/mcp_server.py
+```
+
+Then in Codex CLI, you can ask Codex to speak:
+
+> "Say hello"
+> "Read that summary aloud using the British male voice bm_george"
+> "Save that explanation as an MP3"
+
+### MCP Server (Codex Mac App)
+
+Codex Mac App and Codex CLI share the same global Codex config (`~/.codex/config.toml`).
+After registering `kokoro-tts` with `codex mcp add ...` in a terminal, restart the Codex app.
 
 ### Smoke Test
 
