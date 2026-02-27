@@ -99,8 +99,11 @@ If ChatGPT Mac does not have MCP support for your account/workflow, you can stil
 1. Create a new Keyboard Maestro macro group limited to ChatGPT (`com.openai.chat`).
 2. Create a macro named `Speak Clipboard`.
 3. Set trigger: `The clipboard changes`.
-4. Add action: `Execute Shell Script`.
-5. Configure shell script:
+4. Add action: `If Then Else` with `If All Conditions Met`:
+   - `The clipboard contains [kokoro]`
+   - `The clipboard contains [/kokoro]`
+5. In the `Then` branch, add action: `Execute Shell Script`.
+6. Configure shell script:
    - Shell: `/bin/zsh`
    - Input: `None`
    - Script:
@@ -118,9 +121,9 @@ Optional variants:
 
 Usage notes:
 
-1. Copy any ChatGPT response text to speak it directly.
-2. If the copied text contains `[kokoro]...[/kokoro]`, only that block is spoken.
-3. If no markers are present, the full clipboard text is spoken.
+1. This `If Then Else` setup is marker-only: it speaks only when both markers exist.
+2. Inside the copied text, `kokoro-clipboard` speaks only the text between `[kokoro]...[/kokoro]`.
+3. If you remove the `If Then Else` gate, `kokoro-clipboard` will speak any copied ChatGPT text.
 4. Non-text clipboard items (images/files/PDF) are announced unless `--silent-nontext` is set.
 
 ### MCP Server (Claude Code)
