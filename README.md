@@ -2,9 +2,9 @@
 
 Text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Works two ways:
 
-- **MCP server** — givegives local Claude and Codex clients (Claude Chat/Code/Cowork, Codex App, Codex CLI) the ability to speak text aloud and convert text to audio.
-- Not supported yet: ChatGPT Mac App
-- **Command-line tool** — `kokoro` command for use in scripts, the terminal, or piped workflows
+- **MCP server** — gives local Claude and Codex clients (Claude Chat/Code/Cowork, Codex App, Codex CLI) the ability to speak text aloud and convert text to audio.
+- **ChatGPT Mac App** — supported via `kokoro-clipboard` + Keyboard Maestro workaround (not MCP-native yet).
+- **Command-line tools** — `kokoro` and `kokoro-clipboard` commands for use in scripts, the terminal, or piped workflows
 
 Both share the same generation engine and playback code, so pause/stop controls (via Stream Deck, hotkeys, etc.) work identically regardless of how audio was started.
 
@@ -36,7 +36,7 @@ python -m spacy download en_core_web_sm
 
 ## Usage
 
-### Command Line
+### Command Line (`kokoro`)
 
 ```bash
 kokoro "Hello, world."                         # play immediately
@@ -57,6 +57,71 @@ To make `kokoro` available globally, symlink it:
 ```bash
 ln -sf /path/to/kokoro-tts-mcp/kokoro ~/bin/kokoro
 ```
+
+### Command Line (`kokoro-clipboard`)
+
+```bash
+kokoro-clipboard                                # speak current clipboard
+kokoro-clipboard --dry-run                      # preview cleaned speech text
+kokoro-clipboard --silent-nontext               # do not speak non-text clipboard
+kokoro-clipboard --raw                          # skip markdown cleanup
+kokoro-clipboard --max-chars 20000              # character cap before truncation
+kokoro-clipboard --text "[kokoro]Hello[/kokoro]" --dry-run
+```
+
+`kokoro-clipboard` reads the current macOS clipboard and speaks it with markdown cleanup. If `[kokoro]...[/kokoro]` markers are present, only the text between markers is spoken. If markers are absent, the full clipboard text is spoken.
+
+If clipboard content is non-text (image/PDF/file/URL), it speaks a short type message unless `--silent-nontext` is used.
+
+Arguments:
+
+| Argument | Description |
+|----------|-------------|
+| `-v`, `--voice` | Voice name (default: `af_heart`) |
+| `-s`, `--speed` | Speed multiplier (default: `1.0`) |
+| `--kokoro-cmd` | Command/path used to invoke `kokoro` |
+| `--raw` | Skip markdown cleanup |
+| `--silent-nontext` | Exit without speaking when clipboard is non-text |
+| `--max-chars` | Character cap before truncation (default: `20000`) |
+| `--dry-run` | Print final text instead of speaking |
+| `--text` | Use provided text instead of reading clipboard |
+
+To make `kokoro-clipboard` available globally, symlink it:
+
+```bash
+ln -sf /path/to/kokoro-tts-mcp/kokoro-clipboard ~/bin/kokoro-clipboard
+```
+
+### Keyboard Maestro (ChatGPT Mac workaround)
+
+If ChatGPT Mac does not have MCP support for your account/workflow, you can still get spoken output by triggering `kokoro-clipboard` from Keyboard Maestro.
+
+1. Create a new Keyboard Maestro macro group limited to ChatGPT (`com.openai.chat`).
+2. Create a macro named `Speak Clipboard`.
+3. Set trigger: `The clipboard changes`.
+4. Add action: `Execute Shell Script`.
+5. Configure shell script:
+   - Shell: `/bin/zsh`
+   - Input: `None`
+   - Script:
+
+```bash
+~/bin/kokoro-clipboard
+```
+
+Optional variants:
+
+```bash
+~/bin/kokoro-clipboard --silent-nontext
+~/bin/kokoro-clipboard -v bm_fable -s 1.1
+```
+
+Usage notes:
+
+1. Copy any ChatGPT response text to speak it directly.
+2. If the copied text contains `[kokoro]...[/kokoro]`, only that block is spoken.
+3. If no markers are present, the full clipboard text is spoken.
+4. Non-text clipboard items (images/files/PDF) are announced unless `--silent-nontext` is set.
 
 ### MCP Server (Claude Code)
 

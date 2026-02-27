@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#
+# kokoro-clipboard — Speak the current clipboard using kokoro-clipboard.py
+#
+# Thin wrapper that invokes kokoro-clipboard.py with the project's venv Python.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+VENV_PYTHON="${SCRIPT_DIR}/.venv/bin/python3.12"
+
+[[ -x "${VENV_PYTHON}" ]] || {
+    echo "kokoro-clipboard: venv not found at ${VENV_PYTHON}. Run: python3.12 -m venv .venv && pip install -r requirements.txt" >&2
+    exit 1
+}
+
+exec "${VENV_PYTHON}" "${SCRIPT_DIR}/kokoro-clipboard.py" --kokoro-cmd "${SCRIPT_DIR}/kokoro" "$@"
