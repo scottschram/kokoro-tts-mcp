@@ -105,11 +105,12 @@ def _play_audio(audio: np.ndarray):
     """Play audio with pause/resume sentinel support. Runs in background thread."""
     global _playback_stream
     _playback_stop.clear()
-    # Clean up stale stop sentinel from a previous session
-    try:
-        os.remove(STOP_SENTINEL)
-    except FileNotFoundError:
-        pass
+    # Clean up stale sentinels from a previous session
+    for f in (SENTINEL, STOP_SENTINEL):
+        try:
+            os.remove(f)
+        except FileNotFoundError:
+            pass
     _set_state("playing")
 
     try:
@@ -176,11 +177,12 @@ def _generate_and_play(text: str, voice: str, speed: float):
     """Generate audio chunk-by-chunk and play each immediately. Runs in background thread."""
     global _playback_stream
     _playback_stop.clear()
-    # Clean up stale stop sentinel from a previous session
-    try:
-        os.remove(STOP_SENTINEL)
-    except FileNotFoundError:
-        pass
+    # Clean up stale sentinels from a previous session
+    for f in (SENTINEL, STOP_SENTINEL):
+        try:
+            os.remove(f)
+        except FileNotFoundError:
+            pass
     _set_state("playing")
 
     stream = None
