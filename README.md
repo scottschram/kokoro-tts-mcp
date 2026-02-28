@@ -223,6 +223,23 @@ Two shell scripts control playback from outside Claude (e.g., via Stream Deck, K
 
 These work by creating/removing sentinel files (`/tmp/kokoro-tts-pause`, `/tmp/kokoro-tts-stop`) that the playback loop monitors.
 
+## Text Preprocessing
+
+**MCP server and CLI** — Negative numbers (e.g., `-3`) are expanded to words
+(`minus 3`) before generation. The Kokoro phonemizer silently drops bare
+negative-sign tokens, so without this preprocessing, `-3 degrees` would be
+spoken as just `degrees`.
+
+**kokoro-clipboard** — Clipboard text goes through additional preprocessing
+to improve listening quality:
+
+- Markdown syntax stripped (headings, bold, italic, links, fences, tables, etc.)
+- URLs expanded to speakable form (`https://foo.com/path` → `https colon slash slash foo dot com slash path`)
+- Negative numbers expanded (`-3` → `minus 3`)
+- Punctuation between digits/words preserved (`3.14`, `10:30`, `$1,299.99` stay intact)
+- `[kokoro]...[/kokoro]` markers supported to limit what gets spoken
+- Use `--dry-run` to preview the cleaned text without audio
+
 ## Known Issues
 
 - **Python 3.13+ not supported** — spacy and pydantic have incompatibilities on 3.13+. Use Python 3.12.

@@ -59,6 +59,9 @@ def strip_markdown_for_tts(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = html.unescape(text)
 
+    # Expand negative numbers so TTS doesn't silently drop them.
+    text = re.sub(r"(?<!\w)-(\d)", r"minus \1", text)
+
     # Keep code content but drop markdown fence syntax.
     text = re.sub(r"```[^\n]*\n(.*?)```", r"\nCode snippet:\n\1\n", text, flags=re.DOTALL)
     text = re.sub(r"`([^`]+)`", r"\1", text)

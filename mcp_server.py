@@ -7,6 +7,7 @@ Lazy-loads Kokoro-82M on first use, keeps it resident for fast subsequent calls.
 import contextlib
 import fcntl
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -123,6 +124,7 @@ def _acquire_playback_ownership():
 
 def _generate_audio(text: str, voice: str, speed: float) -> np.ndarray:
     """Generate audio samples from text. Returns float32 numpy array."""
+    text = _preprocess_for_tts(text)
     model = _get_model()
     chunks = []
     # Redirect stdout → stderr so library print() calls (e.g. "Creating new
@@ -229,9 +231,17 @@ def _play_audio(audio: np.ndarray, session_id: int | None = None):
                         pass
 
 
+def _preprocess_for_tts(text: str) -> str:
+    """Expand symbols that the phonemizer drops or mishandles."""
+    # Negative numbers: -3 → minus 3 (prevents silent drop)
+    text = re.sub(r"(?<!\w)-(\d)", r"minus \1", text)
+    return text
+
+
 def _generate_and_play(text: str, voice: str, speed: float, session_id: int | None = None):
     """Generate audio chunk-by-chunk and play each immediately. Runs in background thread."""
     global _playback_stream
+    text = _preprocess_for_tts(text)
     if session_id is None:
         session_id = _next_playback_session()
 
