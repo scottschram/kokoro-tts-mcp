@@ -31,12 +31,8 @@ def get_clipboard_info() -> str:
 
 
 def get_clipboard_text() -> str:
-    # Prefer plain text when available.
-    for cmd in (["pbpaste", "-Prefer", "txt"], ["pbpaste"]):
-        code, out, _ = run_capture(cmd)
-        if code == 0 and out:
-            return out
-    return ""
+    code, out, _ = run_capture(["pbpaste", "-Prefer", "txt"])
+    return out if code == 0 else ""
 
 
 def classify_nontext(info: str) -> str:
@@ -75,7 +71,14 @@ def strip_markdown_for_tts(text: str) -> str:
     # Links/images.
     text = re.sub(r"!\[([^\]]*)\]\([^)]+\)", lambda m: m.group(1) or "image", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    text = re.sub(r"<(https?://[^>]+)>", r"\1", text)
+    def _url_to_speech(url: str) -> str:
+        url = re.sub(r"^(https?)://", r"\1 colon slash slash ", url)
+        url = re.sub(r"/", " slash ", url)
+        url = re.sub(r"\.(?=\w)", " dot ", url)
+        return url
+
+    text = re.sub(r"<(https?://[^>]+)>", lambda m: _url_to_speech(m.group(1)), text)
+    text = re.sub(r"https?://\S+", lambda m: _url_to_speech(m.group(0)), text)
 
     # Headings/quotes/hr.
     text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
@@ -113,7 +116,7 @@ def strip_markdown_for_tts(text: str) -> str:
         parts.append(line)
 
     out = " ".join(parts)
-    out = re.sub(r"\s*([,.!?;:])\s*", r"\1 ", out)
+    out = re.sub(r"(?<!\w)\s*([,.!?;:])\s*(?!\w)", r"\1 ", out)
     out = re.sub(r"\s{2,}", " ", out)
     return out.strip()
 
