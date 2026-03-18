@@ -28,13 +28,17 @@ echo "Text:  $TEXT"
 echo "Voice: $VOICE"
 echo "Generating audio..."
 
-"$VENV_PYTHON" -c "
+"$VENV_PYTHON" - "$TEXT" "$VOICE" <<'PYEOF'
+import sys
 from mcp_server import _generate_audio, _play_audio
-audio = _generate_audio('''$TEXT''', '$VOICE', 1.0)
+
+text = sys.argv[1]
+voice = sys.argv[2]
+audio = _generate_audio(text, voice, 1.0)
 if len(audio) == 0:
-    print('Error: no audio generated.')
-    exit(1)
-print(f'Playing {len(audio) / 24000:.1f}s of audio...')
+    print("Error: no audio generated.")
+    sys.exit(1)
+print(f"Playing {len(audio) / 24000:.1f}s of audio...")
 _play_audio(audio)
-print('Done.')
-"
+print("Done.")
+PYEOF

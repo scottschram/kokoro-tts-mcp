@@ -34,7 +34,6 @@ from mcp_server import (
     _generate_audio,
     _get_model,
     _play_audio,
-    _playback_state,
     _stop_playback,
 )
 

@@ -1,6 +1,6 @@
 # kokoro-tts-mcp
 
-Text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Works two ways:
+Text-to-speech using the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model, accelerated with [MLX](https://github.com/ml-explore/mlx) on Apple Silicon. Works three ways:
 
 - **MCP server** — gives local Claude and Codex clients (Claude Chat/Code/Cowork, Codex App, Codex CLI) the ability to speak text aloud and convert text to audio.
 - **ChatGPT Mac App** — supported via `kokoro-clipboard` + Keyboard Maestro workaround (not MCP-native yet).
