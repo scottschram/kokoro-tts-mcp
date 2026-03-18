@@ -199,6 +199,7 @@ A quick test script to verify the TTS pipeline without MCP or the full CLI:
 | `resume()` | Resume paused playback |
 | `stop()` | Stop playback immediately |
 | `status()` | Return current state: `idle`, `playing`, or `paused` |
+| `user_stop_requested()` | Check if the user stopped playback externally (returns `True` once, then clears) |
 | `speak_and_save(text, output_path?, voice?, speed?, mp3?)` | Generate and save audio to a file |
 | `list_voices()` | List all available voices |
 
@@ -222,6 +223,10 @@ Two shell scripts control playback from outside Claude (e.g., via Stream Deck, K
 - **`kokoro-stop`** — Stop playback immediately and discard audio.
 
 These work by creating/removing sentinel files (`/tmp/kokoro-tts-pause`, `/tmp/kokoro-tts-stop`) that the playback loop monitors.
+
+### Multi-Segment Playback
+
+When Claude plays multiple segments sequentially (e.g., reading a list of items one by one), it polls `status()` until idle before starting the next segment. If the user stops playback externally (via `kokoro-stop`, Stream Deck, etc.), `user_stop_requested()` returns `True` once, signaling Claude to skip remaining segments instead of immediately starting the next one. The MCP `stop()` tool does **not** set this flag — it only applies to external stops, so Claude can distinguish "user wants silence" from "Claude decided to stop."
 
 ## Text Preprocessing
 

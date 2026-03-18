@@ -223,12 +223,11 @@ def _play_audio(audio: np.ndarray, session_id: int | None = None):
                     _playback_stream = None
             if _is_current_session(session_id):
                 _set_state("idle")
-                # Clean up sentinel files
-                for f in (SENTINEL, STOP_SENTINEL):
-                    try:
-                        os.remove(f)
-                    except FileNotFoundError:
-                        pass
+                # Clean up pause sentinel (stop sentinel left for user_stop_requested)
+                try:
+                    os.remove(SENTINEL)
+                except FileNotFoundError:
+                    pass
 
 
 def _preprocess_for_tts(text: str) -> str:
@@ -346,11 +345,11 @@ def _generate_and_play(text: str, voice: str, speed: float, session_id: int | No
                     _playback_stream = None
             if _is_current_session(session_id):
                 _set_state("idle")
-                for f in (SENTINEL, STOP_SENTINEL):
-                    try:
-                        os.remove(f)
-                    except FileNotFoundError:
-                        pass
+                # Clean up pause sentinel (stop sentinel left for user_stop_requested)
+                try:
+                    os.remove(SENTINEL)
+                except FileNotFoundError:
+                    pass
 
 
 def _stop_playback():
@@ -360,12 +359,12 @@ def _stop_playback():
     _playback_stop.set()
     # Invalidate any currently-running playback worker session immediately.
     _next_playback_session()
-    # Remove sentinel files so the thread isn't stuck in pause loop
-    for f in (SENTINEL, STOP_SENTINEL):
-        try:
-            os.remove(f)
-        except FileNotFoundError:
-            pass
+    # Remove pause sentinel so the thread isn't stuck in pause loop
+    # (stop sentinel left for user_stop_requested)
+    try:
+        os.remove(SENTINEL)
+    except FileNotFoundError:
+        pass
     # Wait for the background thread to clean up the stream and exit
     if _playback_thread is not None and _playback_thread.is_alive():
         _playback_thread.join(timeout=3.0)
@@ -448,8 +447,28 @@ def stop() -> str:
 
 @mcp.tool()
 def status() -> str:
-    """Return current playback state: idle, playing, or paused."""
+    """Return current playback state: idle, playing, or paused.
+
+    When playing multiple segments sequentially, poll this until idle
+    before starting the next segment — and check user_stop_requested()
+    before continuing, so an external stop halts the entire sequence.
+    """
     return _playback_state
+
+
+@mcp.tool()
+def user_stop_requested() -> bool:
+    """Check if the user stopped playback externally (e.g. Stream Deck button).
+
+    Returns True (and clears the flag) if a user stop occurred.
+    Use this when playing multiple segments to detect if the user wants to
+    stop all remaining segments, not just the current one.
+    """
+    try:
+        os.remove(STOP_SENTINEL)
+        return True
+    except FileNotFoundError:
+        return False
 
 
 @mcp.tool()

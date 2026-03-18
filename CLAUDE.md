@@ -4,7 +4,7 @@ See [README.md](README.md) for setup, usage, and voice reference.
 
 ## Architecture
 
-- Single file: `mcp_server.py` — FastMCP server with 7 tools
+- Single file: `mcp_server.py` — FastMCP server with 8 tools
 - Lazy-loads Kokoro-82M on first `speak()` / `speak_and_save()` call
 - Model stays resident in memory (~600 MB) for fast subsequent calls
 - `speak()` is non-blocking — streams audio chunk-by-chunk in background thread
@@ -13,6 +13,8 @@ See [README.md](README.md) for setup, usage, and voice reference.
 - Kills previous playback before starting new `speak()` — prevents audio overlap
 - Pause/resume via sentinel file `/tmp/kokoro-tts-pause`
 - Stop via sentinel file `/tmp/kokoro-tts-stop` — clears pause state too
+- `user_stop_requested()` checks and clears stop sentinel — lets Claude detect
+  external stops (e.g. Stream Deck) when playing multiple segments sequentially
 - Short text (<25 chars) padded with ` ... ...` to avoid mlx-audio hang bug
 - `stdout` redirected to `stderr` during model load and generation to avoid
   corrupting the MCP JSON-RPC transport
