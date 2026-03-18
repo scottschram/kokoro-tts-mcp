@@ -381,6 +381,10 @@ mcp = FastMCP("kokoro-tts")
 def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -> str:
     """Speak text aloud. Returns immediately while audio plays in background.
 
+    Calling speak() while audio is still playing will interrupt any current
+    playback. To play multiple segments sequentially, poll status() for
+    idle between calls — and check user_stop_requested() before continuing.
+
     Args:
         text: Text to speak.
         voice: Voice name (e.g. af_heart, bm_fable). Default: af_heart.
