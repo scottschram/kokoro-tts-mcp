@@ -386,15 +386,9 @@ def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -
     user to say "continue" between segments. This keeps playback
     responsive and works reliably across MCP clients.
 
-    Technical reasons for the 2500-word recommendation (may be revisited
-    if these limits improve):
-      - Some MCP clients (e.g. Claude Code as of 2026-04) show
-        super-linear tool-call dispatch latency for large text arguments:
-        seconds at 2500 words, ~3 min at 3000 words, and outright hangs
-        above ~3500 words.
-      - The Kokoro pipeline itself is not the bottleneck — the `kokoro`
-        CLI handles 10,000+ words with no such delay, because it reads
-        text directly and doesn't pass it through an MCP tool call.
+    The limit is in the MCP client's tool-call dispatch path, not the
+    Kokoro pipeline. See README.md for the bisection. (May be revisited
+    if the client-side scaling improves.)
 
     For longer reads, use the `kokoro` CLI directly (speak_and_save() is
     subject to the same client-side limit; the CLI is not).

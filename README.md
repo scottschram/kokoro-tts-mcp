@@ -50,7 +50,7 @@ kokoro -v list                                 # show all voices
 kokoro -h                                      # full help
 ```
 
-Playback streams chunk-by-chunk, so text of ~2500 words or less starts playing within a few seconds. Longer text has rapidly growing startup latency when going through the MCP tool-call path (see [CLAUDE.md](CLAUDE.md) for the bisection); use `kokoro -f file.txt -o file.wav` or `cat file.txt | kokoro` for long reads. Pause and stop work at any point during playback.
+Playback via the MCP `speak()` tool: text ~2500 words or less starts within a few seconds; beyond that, first-audio latency grows roughly linearly with text size (~3 min at 3000 words, ~4 min at 5000). The delay sits in the MCP client's tool-call dispatch — not in the Kokoro pipeline, which streams audio within seconds at any size when driven via the CLI or a direct Python import. For long reads, use the CLI: `kokoro -f file.txt -o file.wav` (play with your preferred audio player) or `cat file.txt | kokoro`. Pause and stop work at any point during playback. See [CLAUDE.md](CLAUDE.md) for the bisection.
 
 To make `kokoro` available globally, symlink it:
 

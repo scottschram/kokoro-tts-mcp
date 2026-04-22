@@ -65,8 +65,10 @@ Bisection (input was 5000-word Emma excerpt unless noted):
 - Via Claude Code MCP tool call:
   - 2500 words: audio in seconds ✅
   - 3000 words: ~3 min before audio (technically works, unusable)
-  - 3500 words: tool call hangs 2+ min ❌
-  - 5000 words: tool call hangs 3+ min ❌
+  - 5000 words: ~4 min before audio, returned and played (retested
+    with mcp 1.27.0). Previously reported as a hang at 3500–5000
+    words on mcp 1.26.0, but we may simply not have waited long
+    enough — the scaling looks roughly linear with text size.
 
 So everything up to and including FastMCP stdio handles 5000 words in
 under 2 seconds. The hang and latency appear only when a Claude Code
