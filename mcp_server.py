@@ -381,9 +381,31 @@ mcp = FastMCP("kokoro-tts")
 def speak(text: str, voice: str = DEFAULT_VOICE, speed: float = DEFAULT_SPEED) -> str:
     """Speak text aloud. Returns immediately while audio plays in background.
 
-    Calling speak() while audio is still playing will interrupt any current
-    playback. To play multiple segments sequentially, poll status() for
-    idle between calls — and check user_stop_requested() before continuing.
+    Recommended usage for long documents: split into segments of ~2500
+    words or fewer, speak each segment in its own call, and wait for the
+    user to say "continue" between segments. This keeps playback
+    responsive and works reliably across MCP clients.
+
+    Technical reasons for the 2500-word recommendation (may be revisited
+    if these limits improve):
+      - Some MCP clients (e.g. Claude Code as of 2026-04) show
+        super-linear tool-call dispatch latency for large text arguments:
+        seconds at 2500 words, ~3 min at 3000 words, and outright hangs
+        above ~3500 words.
+      - The Kokoro pipeline itself is not the bottleneck — the `kokoro`
+        CLI handles 10,000+ words with no such delay, because it reads
+        text directly and doesn't pass it through an MCP tool call.
+
+    For longer reads, use the `kokoro` CLI directly (speak_and_save() is
+    subject to the same client-side limit; the CLI is not).
+
+    Calling speak() while audio is still playing interrupts the current
+    playback.
+
+    If playback ends mid-document — either between segments or because
+    the user pressed stop — and the user asks to continue from a phrase,
+    find that phrase in the original text and call speak() with the
+    remainder. The MCP does not track playback position.
 
     Args:
         text: Text to speak.
@@ -451,12 +473,7 @@ def stop() -> str:
 
 @mcp.tool()
 def status() -> str:
-    """Return current playback state: idle, playing, or paused.
-
-    When playing multiple segments sequentially, poll this until idle
-    before starting the next segment — and check user_stop_requested()
-    before continuing, so an external stop halts the entire sequence.
-    """
+    """Return current playback state: idle, playing, or paused."""
     return _playback_state
 
 
@@ -484,6 +501,11 @@ def speak_and_save(
     mp3: bool = False,
 ) -> str:
     """Generate speech and save to a file. Blocks until file is written.
+
+    Subject to the same ~2500-word MCP tool-call limit as speak() — some
+    MCP clients hang on tool calls with very large text arguments. For
+    longer text, use the `kokoro` CLI (`kokoro -f file.txt -o out.wav`)
+    which has no such limit.
 
     Args:
         text: Text to speak.

@@ -50,3 +50,34 @@ See [README.md](README.md) for setup, usage, and voice reference.
 - ~30-40 MB idle (model not yet loaded)
 - ~600 MB after first TTS use (model resident)
 - ~800 MB peak during generation
+
+## MCP Client Size Limit (tested 2026-04-22)
+
+The `speak()` MCP tool has a practical ceiling of ~2500 words per call.
+Not a pipeline issue — a scaling issue in the MCP client path above us.
+
+Bisection (input was 5000-word Emma excerpt unless noted):
+
+- CLI direct (`kokoro -f file.txt`): 10,000 words, RTF ~0.03×, works fine.
+- Direct Python import of `speak()`: returns in 1.81s, audio starts at 1.92s.
+- Manual JSON-RPC over stdio to `mcp_server.py`: tools/call roundtrip
+  1.54s, audio plays.
+- Via Claude Code MCP tool call:
+  - 2500 words: audio in seconds ✅
+  - 3000 words: ~3 min before audio (technically works, unusable)
+  - 3500 words: tool call hangs 2+ min ❌
+  - 5000 words: tool call hangs 3+ min ❌
+
+So everything up to and including FastMCP stdio handles 5000 words in
+under 2 seconds. The hang and latency appear only when a Claude Code
+`tool_use` block with a large text argument is in flight. Not in our
+code to fix.
+
+To retest whether the limit has been lifted: ask Claude (Code or Chat)
+to speak the contents of `input-test/emma_5000.txt` via the `speak()`
+MCP tool. If first audio arrives within seconds, the "2500-word
+recommendation" block in `speak()`'s docstring can be removed and
+the README note revised. `status()`'s docstring should stay a
+one-liner regardless — polling it in a loop burns tool-use budget in
+Claude Chat, so the old "poll until idle" guidance is wrong even if
+the size limit is gone.

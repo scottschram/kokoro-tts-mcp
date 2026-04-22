@@ -50,7 +50,7 @@ kokoro -v list                                 # show all voices
 kokoro -h                                      # full help
 ```
 
-Playback streams chunk-by-chunk, so even very long text (tested with 1500+ words) starts playing within a few seconds. Pause and stop work at any point during playback.
+Playback streams chunk-by-chunk, so text of ~2500 words or less starts playing within a few seconds. Longer text has rapidly growing startup latency when going through the MCP tool-call path (see [CLAUDE.md](CLAUDE.md) for the bisection); use `kokoro -f file.txt -o file.wav` or `cat file.txt | kokoro` for long reads. Pause and stop work at any point during playback.
 
 To make `kokoro` available globally, symlink it:
 
