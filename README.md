@@ -34,6 +34,16 @@ After installing, download the spaCy English model:
 python -m spacy download en_core_web_sm
 ```
 
+### Install the CLI commands
+
+Symlink the `kokoro*` commands (`kokoro`, `kokoro-clipboard`, `kokoro-pause`, `kokoro-stop`) into `~/bin` so they're on your PATH:
+
+```bash
+script/deploy
+```
+
+Idempotent and safe to re-run; run it once on each machine. `~/bin` must be on your PATH. (It refuses to overwrite a real file that's in the way, so it won't clobber anything that isn't its own symlink.)
+
 ## Usage
 
 ### Command Line (`kokoro`)
@@ -52,11 +62,7 @@ kokoro -h                                      # full help
 
 Playback via the MCP `speak()` tool: text ~2500 words or less starts within a few seconds; beyond that, first-audio latency grows roughly linearly with text size (~3 min at 3000 words, ~4 min at 5000). The delay sits in the MCP client's tool-call dispatch — not in the Kokoro pipeline, which streams audio within seconds at any size when driven via the CLI or a direct Python import. For long reads, use the CLI: `kokoro -f file.txt -o file.wav` (play with your preferred audio player) or `cat file.txt | kokoro`. Pause and stop work at any point during playback. See [CLAUDE.md](CLAUDE.md) for the bisection.
 
-To make `kokoro` available globally, symlink it:
-
-```bash
-ln -sf /path/to/kokoro-tts-mcp/kokoro ~/bin/kokoro
-```
+`kokoro` is installed globally by `script/deploy` (see [Setup](#setup)), which symlinks all four `kokoro*` commands into `~/bin` at once.
 
 ### Command Line (`kokoro-clipboard`)
 
@@ -86,11 +92,7 @@ Arguments:
 | `--dry-run` | Print final text instead of speaking |
 | `--text` | Use provided text instead of reading clipboard |
 
-To make `kokoro-clipboard` available globally, symlink it:
-
-```bash
-ln -sf /path/to/kokoro-tts-mcp/kokoro-clipboard ~/bin/kokoro-clipboard
-```
+`kokoro-clipboard` is installed globally by `script/deploy` (see [Setup](#setup)), alongside the other `kokoro*` commands.
 
 ### Keyboard Maestro (ChatGPT Mac workaround)
 

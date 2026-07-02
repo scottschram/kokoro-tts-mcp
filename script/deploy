@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# script/deploy — symlink this repo's kokoro commands into ~/bin. Idempotent and
+# safe to re-run. Each command's target is a same-named script in the repo root.
+# Run once on EACH machine (running it is how the commands appear on that box).
+# Override the target dir:  BIN_DIR=/some/where script/deploy
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+REPO="$(pwd)"
+BIN_DIR="${BIN_DIR:-$HOME/bin}"
+
+# Commands to install — each is a same-named executable in the repo root.
+COMMANDS=(kokoro kokoro-clipboard kokoro-pause kokoro-stop)
+
+# Point ~/bin/<name> at <target>. Idempotent; refuses to clobber a non-symlink
+# so we never destroy something that isn't ours.
+deploy_link() {
+  local name="$1" target="$2"
+  local link="$BIN_DIR/$name"
+
+  [ -x "$target" ] || { echo "deploy: $target is missing or not executable." >&2; return 1; }
+  head -1 "$target" | grep -q '^#!' || echo "deploy: warning — $target has no shebang; '$name' may not run standalone." >&2
+
+  if [ -L "$link" ]; then
+    if [ "$(readlink "$link")" = "$target" ]; then
+      echo "✓ $name already points here — nothing to do."
+    else
+      ln -sfn "$target" "$link"
+      echo "✓ $name repointed → $target"
+    fi
+  elif [ -e "$link" ]; then
+    echo "deploy: $link exists and is NOT a symlink — refusing to overwrite. Move it aside and re-run." >&2
+    return 1
+  else
+    ln -s "$target" "$link"
+    echo "✓ $name installed → $target"
+  fi
+}
+
+mkdir -p "$BIN_DIR"
+
+rc=0
+for name in "${COMMANDS[@]}"; do
+  deploy_link "$name" "$REPO/$name" || rc=1
+done
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*) : ;;
+  *) echo "note: $BIN_DIR is not on your PATH — add it to use these commands." >&2 ;;
+esac
+
+exit "$rc"
