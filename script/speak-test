@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# speak-test — Smoke test Kokoro TTS without MCP or Claude
+#
+# Imports the generation and playback functions directly from mcp_server.py
+# and speaks a short phrase, so you actually HEAR whether the TTS pipeline
+# works after a fresh setup or on a new machine. Works from ANY directory —
+# it locates its own repo, not your cwd.
+#
+# Usage: script/speak-test                    # default test phrase
+#        script/speak-test "Custom text"      # speak custom text
+#        script/speak-test "Hello" bm_fable   # specify voice
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(dirname "$SCRIPT_DIR")"            # script/ -> repo root
+VENV_PYTHON="$REPO/.venv/bin/python3.12"
+
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "Error: venv not found at $REPO/.venv" >&2
+    echo "Run: python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+    exit 1
+fi
+
+TEXT="${1:-Hello from Kokoro. If you can hear this, the TTS pipeline is working.}"
+VOICE="${2:-af_heart}"
+
+echo "Text:  $TEXT"
+echo "Voice: $VOICE"
+echo "Generating audio..."
+
+# Run from the repo root so `import mcp_server` resolves regardless of the
+# caller's cwd (python - puts cwd, not the script's dir, on sys.path).
+cd "$REPO"
+"$VENV_PYTHON" - "$TEXT" "$VOICE" <<'PYEOF'
+import sys
+from mcp_server import _generate_audio, _play_audio
+
+text = sys.argv[1]
+voice = sys.argv[2]
+audio = _generate_audio(text, voice, 1.0)
+if len(audio) == 0:
+    print("Error: no audio generated.")
+    sys.exit(1)
+print(f"Playing {len(audio) / 24000:.1f}s of audio...")
+_play_audio(audio)
+print("Done.")
+PYEOF

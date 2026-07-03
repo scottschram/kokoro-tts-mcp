@@ -184,12 +184,12 @@ After registering `kokoro-tts` with `codex mcp add ...` in a terminal, restart t
 
 ### Smoke Test
 
-A quick test script to verify the TTS pipeline without MCP or the full CLI:
+A quick script to verify the TTS pipeline without MCP or the full CLI — it speaks a phrase so you can hear that generation and playback work. Runs from any directory:
 
 ```bash
-./test-tts                          # default test phrase
-./test-tts "Custom text"            # speak custom text
-./test-tts "Cheerio" bm_fable       # specify voice
+script/speak-test                          # default test phrase
+script/speak-test "Custom text"            # speak custom text
+script/speak-test "Cheerio" bm_fable       # specify voice
 ```
 
 ## Tools
