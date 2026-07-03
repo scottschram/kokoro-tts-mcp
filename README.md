@@ -23,16 +23,10 @@ The MCP server lazy-loads the model on first use and keeps it resident in memory
 git clone https://github.com/scottschram/kokoro-tts-mcp.git
 cd kokoro-tts-mcp
 
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+script/setup
 ```
 
-After installing, download the spaCy English model:
-
-```bash
-python -m spacy download en_core_web_sm
-```
+`script/setup` builds the Python 3.12 venv and installs the pinned dependencies (raw equivalent: `python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`). `requirements.txt` is **pinned** to the exact set known to work together — including the spaCy model `en_core_web_sm` — so this reproduces a known-good install with no separate `python -m spacy download` step. Requires Python 3.12 (not 3.13+). Confirm it works with `script/speak-test`.
 
 ### Install the CLI commands
 

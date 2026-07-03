@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# script/setup — (re)build the Python 3.12 venv and install the pinned deps.
+# Kokoro needs Python 3.12 (NOT 3.13+). Installs the exact locked set from
+# requirements.txt into .venv/. Works from any directory. Verify afterward
+# with script/speak-test.
+#
+# This does NOT wipe an existing .venv — move or remove it first for a clean
+# rebuild, so you keep a fallback if the rebuild misbehaves.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"     # this script's dir, absolute
+repo="$(dirname "$here")"                  # script/ -> repo root
+cd "$repo"
+
+if ! command -v python3.12 >/dev/null 2>&1; then
+  echo "error: python3.12 not found. Kokoro needs Python 3.12 (not 3.13+)." >&2
+  echo "       Install with: brew install python@3.12" >&2
+  exit 1
+fi
+
+if [ ! -d .venv ]; then
+  echo "creating .venv (python3.12) …"
+  python3.12 -m venv .venv
+else
+  echo "note: .venv exists — installing into it. Move or remove it first for a clean rebuild."
+fi
+
+echo "installing pinned dependencies from requirements.txt …"
+.venv/bin/python -m pip install --upgrade pip >/dev/null
+.venv/bin/pip install -r requirements.txt
+echo "✓ venv ready at $repo/.venv"
+echo "  verify with: script/speak-test"

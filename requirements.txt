@@ -1,19 +1,141 @@
-# kokoro-tts-mcp direct dependencies
-# Install with: pip install -r requirements.txt
-
-mcp>=1.2.0
-mlx-audio>=0.3.0
-numpy
-sounddevice
-
-# Phonemizer — pin misaki <0.9 (0.9+ breaks EspeakWrapper.set_data_path)
-misaki[en]<0.9
-
-num2words
-spacy
-espeakng-loader
-
-# WARNING: Do NOT install the `phonemizer` package. mlx-audio pulls in
-# `phonemizer-fork` which is the correct dependency. Installing `phonemizer`
-# (without -fork) shadows it and silently breaks espeak fallback — out-of-
-# dictionary words get skipped without error.
+# kokoro-tts-mcp — PINNED to the exact set known to work together.
+# Frozen from a working Python 3.12 venv on 2026-07-03 (the one that passes
+# script/speak-test). Reinstalling reproduces that known-good state:
+#     python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# Requires Python 3.12 (NOT 3.13+). Includes the spaCy model en_core_web_sm,
+# so no separate `python -m spacy download` step is needed.
+#
+# Direct dependencies (everything else below is transitive):
+#   mcp, mlx-audio, numpy, sounddevice, misaki[en], num2words, spacy,
+#   espeakng-loader  (+ the en_core_web_sm spaCy model)
+#
+# Two hard-won constraints — do NOT lose these if you ever re-resolve:
+#   * misaki==0.8.4 — must stay < 0.9 (0.9+ breaks EspeakWrapper.set_data_path).
+#   * phonemizer-fork (NOT phonemizer) — mlx-audio needs the -fork; installing
+#     plain `phonemizer` shadows it and silently breaks espeak fallback
+#     (out-of-dictionary words get skipped without error).
+#
+# To change a dependency: update the venv, confirm script/speak-test still
+# works, then re-freeze into this file (keeping this header).
+# ---------------------------------------------------------------------------
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.12.1
+attrs==25.4.0
+audioread==3.1.0
+babel==2.18.0
+blis==1.3.3
+catalogue==2.0.10
+certifi==2026.1.4
+cffi==2.0.0
+charset-normalizer==3.4.4
+click==8.3.1
+cloudpathlib==0.23.0
+confection==0.1.5
+cryptography==46.0.5
+csvw==3.7.0
+curated-tokenizers==0.0.9
+curated-transformers==0.1.1
+cymem==2.0.13
+decorator==5.2.1
+dlinfo==2.0.0
+docopt==0.6.2
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85
+espeakng-loader==0.2.4
+filelock==3.24.2
+fsspec==2026.2.0
+h11==0.16.0
+hf-xet==1.2.0
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+huggingface_hub==1.4.1
+idna==3.11
+isodate==0.7.2
+Jinja2==3.1.6
+joblib==1.5.3
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+language-tags==1.2.0
+lazy_loader==0.4
+librosa==0.11.0
+llvmlite==0.46.0
+markdown-it-py==4.0.0
+MarkupSafe==3.0.3
+mcp==1.27.0
+mdurl==0.1.2
+miniaudio==1.61
+misaki==0.8.4
+mlx==0.30.6
+mlx-audio==0.3.1
+mlx-lm==0.30.5
+mlx-metal==0.30.6
+mpmath==1.3.0
+msgpack==1.1.2
+murmurhash==1.0.15
+networkx==3.6.1
+num2words==0.5.14
+numba==0.63.1
+numpy==2.3.5
+packaging==26.0
+phonemizer-fork==3.3.2
+platformdirs==4.9.2
+pooch==1.9.0
+preshed==3.0.12
+protobuf==6.33.5
+pycparser==3.0
+pydantic==2.12.5
+pydantic-settings==2.13.0
+pydantic_core==2.41.5
+Pygments==2.19.2
+PyJWT==2.11.0
+pyloudnorm==0.2.0
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
+python-multipart==0.0.22
+PyYAML==6.0.3
+rdflib==7.6.0
+referencing==0.37.0
+regex==2026.1.15
+requests==2.32.5
+rfc3986==1.5.0
+rich==14.3.2
+rpds-py==0.30.0
+safetensors==0.7.0
+scikit-learn==1.8.0
+scipy==1.17.0
+segments==2.3.0
+sentencepiece==0.2.1
+setuptools==82.0.0
+shellingham==1.5.4
+six==1.17.0
+smart_open==7.5.0
+sounddevice==0.5.3
+soundfile==0.13.1
+soxr==1.0.0
+spacy==3.8.11
+spacy-curated-transformers==0.3.1
+spacy-legacy==3.0.12
+spacy-loggers==1.0.5
+srsly==2.5.2
+sse-starlette==3.2.0
+starlette==0.52.1
+sympy==1.14.0
+termcolor==3.3.0
+thinc==8.3.10
+threadpoolctl==3.6.0
+tokenizers==0.22.2
+torch==2.10.0
+tqdm==4.67.3
+transformers==5.0.0rc3
+typer==0.24.0
+typer-slim==0.24.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+uritemplate==4.2.0
+urllib3==2.6.3
+uvicorn==0.41.0
+wasabi==1.1.3
+weasel==0.4.3
+wrapt==2.1.1
